@@ -1,34 +1,37 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
+#Router para reservas
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from schemas.reserva import ReservaCreate, ReservaOut
+from models.reserva import Reserva
+from auth.jwt import get_db, get_current_user
+from typing import List
 
-from schemas.user import UserCreate
-from models.user import User
-from auth.hash import hash_password, verify_password
-from auth.jwt import create_token, get_db
+router = APIRouter(prefix="/reservas", tags=["reservas"])
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+@router.post("/", response_model=ReservaOut)
+def crear_reserva(data: ReservaCreate, db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+    if db.query(Reserva).filter(Reserva.libro_id == data.libro_id, Reserva.reservado == True).first():
+        raise HTTPException(status_code=400, detail="El libro ya está reservado")
 
-@router.post("/register")
-def register(user: UserCreate, db: Session = Depends(get_db)):
-    if db.query(User).filter(User.email == user.email).first():
-        raise HTTPException(status_code=400, detail="Usuario ya existe")
-    hashed = hash_password(user.password)
-    nuevo = User(email=user.email, hashed_password=hashed)
-    db.add(nuevo)
+    nueva = Reserva(libro_id=data.libro_id, reservado=True)
+    db.add(nueva)
     db.commit()
-    db.refresh(nuevo)
-    return {"msg": "Usuario creado"}
+    db.refresh(nueva)
+    return nueva
 
-@router.post("/login")
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Credenciales incorrectas",
-        headers={"WWW-Authenticate": "Bearer"})
-    user = db.query(User).filter(User.email == form_data.username).first()
-    if not user or not verify_password(form_data.password, user.hashed_password):
-        raise credentials_exception
-    
-    access_token = create_token({"sub": user.email})
-    return {"access_token": access_token, "token_type": "bearer"}
+@router.get("/", response_model=List[ReservaOut])
+def listar_reservas(db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+    return db.query(Reserva).all()
+
+
+@router.post("/devolver/{id}", response_model=ReservaOut)
+def devolver_reserva(id: int, db: Session = Depends(get_db), user: dict = Depends(get_current_user)):
+    reserva = db.query(Reserva).filter(Reserva.id == id, Reserva.reservado == True).first()
+    if not reserva:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada o ya devuelta")
+
+    reserva.reservado = False
+    db.commit()
+    db.refresh(reserva)
+    return reserva
