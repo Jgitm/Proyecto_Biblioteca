@@ -50,7 +50,7 @@ def crear_reserva(data: ReservaCreate, db: Session = Depends(get_db), user: dict
     if db.query(Reserva).filter(Reserva.libro_id == data.libro_id, Reserva.reservado == True).first():
         raise HTTPException(status_code=400, detail="El libro ya está reservado")
 
-    nueva = Reserva(libro_id=data.libro_id, usuario_id=user["id"], reservado=True)
+    nueva = Reserva(libro_id=data.libro_id, usuario_id=data.user.id, reservado=True)
     db.add(nueva)
     db.commit()
     db.refresh(nueva)
